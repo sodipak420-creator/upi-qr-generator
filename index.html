@@ -10,8 +10,8 @@
   <meta name="mobile-web-app-capable" content="yes" />
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Fast, reliable QR Canvas Library -->
-  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+  <!-- Inlined QRious library to eliminate all external CDN loading issues -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center p-4">
 
@@ -70,9 +70,13 @@
         <p class="text-[10px] text-slate-400 uppercase font-semibold mt-1">Scan with Any UPI App</p>
       </div>
 
-      <div class="mt-5">
+      <!-- Two Download Methods for Android Support -->
+      <div class="mt-5 space-y-2">
         <button type="button" onclick="downloadQR()" class="w-full bg-sky-500 hover:bg-sky-600 font-bold py-3 rounded-lg text-slate-950 text-sm transition-colors shadow-lg shadow-sky-500/20">
           Download QR Image (PNG) 📥
+        </button>
+        <button type="button" onclick="openPrintView()" class="w-full bg-slate-700 hover:bg-slate-600 font-semibold py-2.5 rounded-lg text-slate-200 text-xs transition-colors">
+          Print / Save as PDF 🖨️
         </button>
       </div>
     </div>
@@ -123,7 +127,6 @@
       document.getElementById('qrTitle').innerText = name;
       document.getElementById('qrVpa').innerText = upi;
 
-      // Direct Canvas QR Generation (QRious)
       const canvas = document.getElementById('qrCanvas');
       qr = new QRious({
         element: canvas,
@@ -137,36 +140,36 @@
       qrSection.scrollIntoView({ behavior: 'smooth' });
     }
 
-    function downloadQR() {
+    function generateCardCanvas() {
       const canvas = document.getElementById('qrCanvas');
-      if (!canvas) return;
+      if (!canvas) return null;
 
-      // Create a printable card canvas with headers & details
       const cardCanvas = document.createElement('canvas');
       const ctx = cardCanvas.getContext('2d');
       cardCanvas.width = 400;
       cardCanvas.height = 480;
 
-      // White background card
+      // Card Background
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, cardCanvas.width, cardCanvas.height);
 
-      // Name & VPA Text
+      // Name
       ctx.textAlign = 'center';
       ctx.fillStyle = '#0f172a';
       ctx.font = 'bold 20px sans-serif';
       const title = document.getElementById('qrTitle').innerText;
       ctx.fillText(title, 200, 45);
 
+      // VPA
       ctx.fillStyle = '#64748b';
       ctx.font = '14px monospace';
       const vpa = document.getElementById('qrVpa').innerText;
       ctx.fillText(vpa, 200, 75);
 
-      // Draw QR Canvas
+      // QR Code
       ctx.drawImage(canvas, 90, 95, 220, 220);
 
-      // Amount Text
+      // Amount
       ctx.fillStyle = '#059669';
       ctx.font = 'bold 24px monospace';
       const amtText = document.getElementById('qrAmount').innerText;
@@ -177,14 +180,48 @@
       ctx.font = 'bold 12px sans-serif';
       ctx.fillText('SCAN WITH GPAY / PHONEPE / PAYTM', 200, 400);
 
-      // Trigger Direct Mobile PNG Download
-      const imageURL = cardCanvas.toDataURL('image/png');
-      const downloadLink = document.createElement('a');
-      downloadLink.download = 'upi-payment-qr.png';
-      downloadLink.href = imageURL;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+      return cardCanvas;
+    }
+
+    function downloadQR() {
+      const cardCanvas = generateCardCanvas();
+      if (!cardCanvas) return;
+
+      // Native Blob method bypasses Android Chrome dataURI blocks
+      cardCanvas.toBlob((blob) => {
+        if (!blob) {
+          alert('Error generating image file.');
+          return;
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = 'upi-payment-qr.png';
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 300);
+      }, 'image/png');
+    }
+
+    function openPrintView() {
+      const cardCanvas = generateCardCanvas();
+      if (!cardCanvas) return;
+
+      const dataUrl = cardCanvas.toDataURL('image/png');
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <html>
+          <head><title>Print UPI QR</title></head>
+          <body style="margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f1f5f9;">
+            <img src="${dataUrl}" style="max-width:90%; border-radius:12px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);" onload="window.print(); window.close();" />
+          </body>
+        </html>
+      `);
+      win.document.close();
     }
 
     if ('serviceWorker' in navigator) {
